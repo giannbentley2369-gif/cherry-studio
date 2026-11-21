@@ -2413,6 +2413,89 @@ export class MessageService {
     `)
     return leaf?.id ?? nodeId
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: Pick<
+      MessageRow,
+      | 'topicId'
+      | 'parentId'
+      | 'role'
+      | 'data'
+      | 'status'
+      | 'siblingsGroupId'
+      | 'modelId'
+      | 'messageSnapshot'
+      | 'stats'
+      | 'createdAt'
+      | 'updatedAt'
+    > | null,
+    change: { deletedAt: number; updatedAt: number }
+  ): void {
+    const existing = tx.select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.id, id)).get()
+    if (!row) {
+      if (existing) tx.update(messageTable).set(change).where(eq(messageTable.id, id)).run()
+      return
+    }
+
+    if (!existing && row.role === 'root') {
+      const currentRoot = tx
+        .select({ id: messageTable.id })
+        .from(messageTable)
+        .where(
+          and(eq(messageTable.topicId, row.topicId), isNull(messageTable.parentId), isNull(messageTable.deletedAt))
+        )
+        .get()
+      if (currentRoot && currentRoot.id !== id) {
+        tx.update(topicTable)
+          .set({ activeNodeId: id })
+          .where(and(eq(topicTable.id, row.topicId), eq(topicTable.activeNodeId, currentRoot.id)))
+          .run()
+        tx.delete(messageTable).where(eq(messageTable.id, currentRoot.id)).run()
+      }
+    }
+
+    if (existing) {
+      tx.update(messageTable)
+        .set({ ...row, deletedAt: null })
+        .where(eq(messageTable.id, id))
+        .run()
+    } else {
+      tx.insert(messageTable)
+        .values({ id, ...row, deletedAt: null })
+        .run()
+    }
+    replaceChatMessageFileRefsTx(tx, id, row.data, row.messageSnapshot)
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof chatMessageFileRefTable.$inferSelect, 'fileEntryId' | 'sourceId' | 'role'>,
+    row: typeof chatMessageFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(chatMessageFileRefTable)
+        .where(
+          and(
+            eq(chatMessageFileRefTable.fileEntryId, key.fileEntryId),
+            eq(chatMessageFileRefTable.sourceId, key.sourceId),
+            eq(chatMessageFileRefTable.role, key.role)
+          )
+        )
+        .run()
+      return
+    }
+    tx.insert(chatMessageFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [chatMessageFileRefTable.fileEntryId, chatMessageFileRefTable.sourceId, chatMessageFileRefTable.role],
+        set: row
+      })
+      .run()
+  }
 }
 
 export const messageService = new MessageService()

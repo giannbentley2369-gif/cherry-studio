@@ -259,6 +259,50 @@ export class TranslateHistoryService {
     db.delete(translateHistoryTable).run()
     logger.info('Cleared all translate histories')
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof translateHistoryTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(translateHistoryTable).where(eq(translateHistoryTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(translateHistoryTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: translateHistoryTable.id,
+        set: { ...values, createdAt: translateHistoryTable.createdAt }
+      })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof translateHistoryFileRefTable.$inferSelect, 'sourceId' | 'role'>,
+    row: typeof translateHistoryFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(translateHistoryFileRefTable)
+        .where(
+          and(eq(translateHistoryFileRefTable.sourceId, key.sourceId), eq(translateHistoryFileRefTable.role, key.role))
+        )
+        .run()
+      return
+    }
+    tx.insert(translateHistoryFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [translateHistoryFileRefTable.sourceId, translateHistoryFileRefTable.role],
+        set: row
+      })
+      .run()
+  }
 }
 
 export const translateHistoryService = new TranslateHistoryService()

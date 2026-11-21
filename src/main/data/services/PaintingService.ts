@@ -485,6 +485,54 @@ class PaintingService {
       })
     })
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: InsertPaintingRow | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.update(paintingTable)
+        .set({ deletedAt: change.deletedAt ?? change.updatedAt, updatedAt: change.updatedAt })
+        .where(eq(paintingTable.id, id))
+        .run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt, deletedAt: null }
+    tx.insert(paintingTable)
+      .values(values)
+      .onConflictDoUpdate({ target: paintingTable.id, set: { ...values, createdAt: paintingTable.createdAt } })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof paintingFileRefTable.$inferSelect, 'fileEntryId' | 'sourceId' | 'role'>,
+    row: typeof paintingFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(paintingFileRefTable)
+        .where(
+          and(
+            eq(paintingFileRefTable.fileEntryId, key.fileEntryId),
+            eq(paintingFileRefTable.sourceId, key.sourceId),
+            eq(paintingFileRefTable.role, key.role)
+          )
+        )
+        .run()
+      return
+    }
+    tx.insert(paintingFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [paintingFileRefTable.fileEntryId, paintingFileRefTable.sourceId, paintingFileRefTable.role],
+        set: row
+      })
+      .run()
+  }
 }
 
 /**

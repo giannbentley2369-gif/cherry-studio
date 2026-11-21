@@ -89,6 +89,7 @@ import { ScreenshotOverlayService } from '@main/services/screenshot'
 import { ScreenshotChatService } from '@main/services/ScreenshotChatService'
 import { SelectionAgentWindowService } from '@main/services/selection/SelectionAgentWindowService'
 import { SelectionService } from '@main/services/selection/SelectionService'
+import { SelfHostedSyncService } from '@main/services/selfHostedSync'
 import { ShortcutService } from '@main/services/ShortcutService'
 import { StorageMonitorService } from '@main/services/StorageMonitorService'
 import { SubWindowService } from '@main/services/SubWindowService'
@@ -161,6 +162,7 @@ export const services = {
   RuntimeQuitConfirmationService,
   SelectionService,
   SelectionAgentWindowService,
+  SelfHostedSyncService,
   ShortcutService,
   ThemeService,
   TraceStorageService,

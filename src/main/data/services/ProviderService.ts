@@ -15,7 +15,7 @@ import { userModelTable } from '@data/db/schemas/userModel'
 import type { InsertUserProviderRow, UserProviderRow } from '@data/db/schemas/userProvider'
 import { type StoredEndpointConfigOverride, userProviderTable } from '@data/db/schemas/userProvider'
 import { type SqliteErrorHandlers, withSqliteErrors } from '@data/db/sqliteErrors'
-import type { DbType } from '@data/db/types'
+import type { DbOrTx, DbType } from '@data/db/types'
 import { isMigratedFromV1 } from '@data/migration/v1MigrationOrigin'
 import { getDataService, registerDataService } from '@data/services/dataServiceRegistry'
 import { notifyModelsDeleted, selectSessionsUsingModelsTx } from '@data/services/modelDeletionEffects'
@@ -1069,6 +1069,43 @@ class ProviderService {
       this.rethrowOrderError(error)
     }
     logger.info('Reordered providers', { count: moves.length })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    providerId: string,
+    row: InsertUserProviderRow | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(userProviderTable).where(eq(userProviderTable.providerId, providerId)).run()
+      return
+    }
+    const values = { ...row, providerId, updatedAt: change.updatedAt }
+    tx.insert(userProviderTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: userProviderTable.providerId,
+        set: { ...values, createdAt: userProviderTable.createdAt }
+      })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof providerLogoFileRefTable.$inferSelect, 'sourceId'>,
+    row: typeof providerLogoFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(providerLogoFileRefTable).where(eq(providerLogoFileRefTable.sourceId, key.sourceId)).run()
+      return
+    }
+    tx.insert(providerLogoFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({ target: providerLogoFileRefTable.sourceId, set: row })
+      .run()
   }
 }
 

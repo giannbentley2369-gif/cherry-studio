@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, not, sql } from 'drizzle-orm'
 import { application } from '@application'
 import { type NoteRow, noteTable } from '@data/db/schemas/note'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
+import type { DbOrTx } from '@data/db/types'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { DeleteNoteQuery, RewriteNotePathDto, UpsertNoteDto } from '@shared/data/api/schemas/notes'
 import type { Note } from '@shared/data/types/note'
@@ -173,6 +174,30 @@ export class NoteService {
         }),
       defaultHandlersFor('Note', `${dto.rootPath}:${dto.fromPath}`)
     )
+  }
+
+  // Self-hosted sync.
+  applySync(tx: DbOrTx, id: string, row: NoteRow | null): void {
+    const [existing] = tx.select().from(noteTable).where(eq(noteTable.id, id)).limit(1).all()
+    if (!row) {
+      if (existing) tx.delete(noteTable).where(eq(noteTable.id, id)).run()
+      return
+    }
+    if (row.id !== id) throw new Error('Sync note id does not match its row')
+    if (existing) {
+      tx.update(noteTable)
+        .set({
+          rootPath: row.rootPath,
+          path: row.path,
+          isStarred: row.isStarred,
+          isExpanded: row.isExpanded,
+          updatedAt: row.updatedAt
+        })
+        .where(eq(noteTable.id, id))
+        .run()
+      return
+    }
+    tx.insert(noteTable).values(row).run()
   }
 }
 

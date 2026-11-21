@@ -954,6 +954,29 @@ export class KnowledgeItemService {
 
     logger.info('Deleted knowledge item', { id })
   }
+
+  // Self-hosted sync.
+  applySync(tx: DbOrTx, id: string, row: typeof knowledgeItemTable.$inferInsert | null): void {
+    const [existing] = tx.select().from(knowledgeItemTable).where(eq(knowledgeItemTable.id, id)).limit(1).all()
+    if (!row) {
+      if (existing) {
+        tx.delete(knowledgeItemTable).where(eq(knowledgeItemTable.id, id)).run()
+        this.reconcileContainersTx(tx, existing.baseId, [existing.groupId])
+      }
+      return
+    }
+    if (row.id !== id) throw new Error('Sync knowledge item id does not match its row')
+    if (existing) {
+      tx.update(knowledgeItemTable)
+        .set({ ...row, createdAt: existing.createdAt })
+        .where(eq(knowledgeItemTable.id, id))
+        .run()
+      this.reconcileContainersTx(tx, row.baseId, [existing.groupId, row.groupId])
+      return
+    }
+    tx.insert(knowledgeItemTable).values(row).run()
+    this.reconcileContainersTx(tx, row.baseId, [row.groupId])
+  }
 }
 
 export const knowledgeItemService = new KnowledgeItemService()

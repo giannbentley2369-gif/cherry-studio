@@ -31,6 +31,7 @@ const NotionSettings = lazy(() => import('./NotionSettings'))
 const NutstoreSettings = lazy(() => import('./NutstoreSettings'))
 const ObsidianSettings = lazy(() => import('./ObsidianSettings'))
 const S3Settings = lazy(() => import('./S3Settings'))
+const SelfHostedSyncSettings = lazy(() => import('./SelfHostedSyncSettings/SelfHostedSyncSettings'))
 const SiyuanSettings = lazy(() => import('./SiyuanSettings'))
 const WebDavSettings = lazy(() => import('./WebDavSettings'))
 const YuqueSettings = lazy(() => import('./YuqueSettings'))
@@ -59,6 +60,16 @@ const DataSettings: FC = () => {
     { key: 'webdav', title: t('settings.data.webdav.title'), icon: <CloudUpload size={16} /> },
     { key: 'nutstore', title: t('settings.data.nutstore.title'), icon: <NutstoreIcon size={16} /> },
     { key: 's3', title: t('settings.data.s3.title.label'), icon: <Server size={16} /> },
+    {
+      key: 'divider_self_hosted_sync',
+      isDivider: true,
+      text: t('settings.data.self_hosted_sync.title')
+    },
+    {
+      key: 'self_hosted_sync',
+      title: t('settings.data.self_hosted_sync.title'),
+      icon: <Server size={16} />
+    },
     { key: 'divider_2', isDivider: true, text: t('settings.data.divider.import_settings') },
     {
       key: 'import_settings',
@@ -119,6 +130,7 @@ const DataSettings: FC = () => {
             {menu === 'webdav' && <WebDavSettings />}
             {menu === 'nutstore' && <NutstoreSettings />}
             {menu === 's3' && <S3Settings />}
+            {menu === 'self_hosted_sync' && <SelfHostedSyncSettings />}
             {menu === 'import_settings' && <ImportMenuOptions />}
             {menu === 'export_menu' && <ExportMenuOptions />}
             {menu === 'markdown_export' && <MarkdownExportSettings />}

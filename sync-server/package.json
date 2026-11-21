@@ -1,0 +1,27 @@
+{
+  "name": "cherry-studio-self-hosted-sync-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "format": "prettier --single-quote --no-semi --trailing-comma none --print-width 120 --write \"src/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"*.yml\" \"README.md\"",
+    "format:check": "prettier --single-quote --no-semi --trailing-comma none --print-width 120 --check \"src/**/*.ts\" \"scripts/**/*.mjs\" \"*.json\" \"*.yml\" \"README.md\"",
+    "smoke:two-device": "node scripts/two-device-check.mjs",
+    "start": "node dist/server.js",
+    "test": "npm run build && node --test dist/server.test.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.8.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.19.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": "20.x || 22.x || 23.x || 24.x || 25.x"
+  }
+}

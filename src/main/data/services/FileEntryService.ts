@@ -300,6 +300,14 @@ export interface FileEntryService {
 
   /** Tx-scoped variant of `delete` for composing write flows. */
   deleteTx(tx: DbOrTx, id: FileEntryId): void
+
+  // Self-hosted sync: never replace an external entry or demote a manually kept file.
+  importSyncedInternalTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof fileEntryTable.$inferInsert | null,
+    timestamp: number
+  ): void
 }
 
 type FileEntryRow = typeof fileEntryTable.$inferSelect
@@ -901,6 +909,32 @@ class FileEntryServiceImpl implements FileEntryService {
 
     tx.delete(fileEntryTable).where(inArray(fileEntryTable.id, ids)).run()
     return ids
+  }
+
+  // Self-hosted sync: preserve record clocks; the file manager owns the byte commit.
+  importSyncedInternalTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof fileEntryTable.$inferInsert | null,
+    timestamp: number
+  ): void {
+    const internal = and(eq(fileEntryTable.id, id), eq(fileEntryTable.origin, 'internal'))
+    if (!row) {
+      tx.update(fileEntryTable).set({ deletedAt: timestamp, updatedAt: timestamp }).where(internal).run()
+      return
+    }
+    const values = { ...row, id, origin: 'internal', externalPath: null, updatedAt: timestamp, deletedAt: null }
+    tx.insert(fileEntryTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: fileEntryTable.id,
+        setWhere: internal,
+        set: {
+          ...values,
+          cleanupPolicy: sql`CASE WHEN ${fileEntryTable.cleanupPolicy} = 'manual' THEN 'manual' ELSE ${values.cleanupPolicy ?? 'manual'} END`
+        }
+      })
+      .run()
   }
 }
 

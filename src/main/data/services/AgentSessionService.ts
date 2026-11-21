@@ -1727,6 +1727,61 @@ export class AgentSessionService {
   reorderBatchTx(tx: DbOrTx, moves: Array<{ id: string; anchor: OrderRequest }>): void {
     applyMoves(tx, sessionsTable, moves, { pkColumn: sessionsTable.id, scope: isNull(sessionsTable.deletedAt) })
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: Pick<
+      typeof sessionsTable.$inferSelect,
+      | 'agentId'
+      | 'model'
+      | 'name'
+      | 'isNameManuallyEdited'
+      | 'description'
+      | 'activeNodeId'
+      | 'orderKey'
+      | 'lastActivityAt'
+      | 'createdAt'
+      | 'updatedAt'
+    > | null,
+    change: { deletedAt: number; updatedAt: number }
+  ): void {
+    const existing = tx.select({ id: sessionsTable.id }).from(sessionsTable).where(eq(sessionsTable.id, id)).get()
+    if (!row) {
+      if (existing) tx.update(sessionsTable).set(change).where(eq(sessionsTable.id, id)).run()
+      return
+    }
+
+    if (!existing) {
+      const workspaceId = agentWorkspaceService.createSystemWorkspaceForSessionTx(tx, {
+        sessionId: id,
+        createdAt: row.createdAt
+      }).id
+      this.insertTx(tx, {
+        id,
+        type: 'conversation',
+        agentId: row.agentId,
+        name: row.name,
+        description: row.description,
+        model: row.model as UniqueModelId | null,
+        workspaceId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt
+      })
+    }
+
+    const rootId = ensureAgentSessionRootTx(tx, id)
+    tx.update(sessionsTable)
+      .set({
+        ...row,
+        type: 'conversation',
+        activeNodeId: row.activeNodeId ?? rootId,
+        deletedAt: null
+      })
+      .where(eq(sessionsTable.id, id))
+      .run()
+  }
 }
 
 export const agentSessionService = new AgentSessionService()

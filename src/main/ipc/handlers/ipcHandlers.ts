@@ -43,6 +43,7 @@ import { quickAssistantHandlers } from './quickAssistant'
 import { screenshotHandlers } from './screenshot'
 import { screenshotChatHandlers } from './screenshotChat'
 import { selectionHandlers } from './selection'
+import { selfHostedSyncHandlers } from './selfHostedSync'
 import { skillHandlers } from './skill'
 import { systemHandlers } from './system'
 import { tabHandlers } from './tab'
@@ -106,6 +107,7 @@ export const ipcHandlers: IpcHandlersFor<IpcRequestSchemas> = {
   ...quickAssistantHandlers,
   ...screenshotHandlers,
   ...screenshotChatHandlers,
+  ...selfHostedSyncHandlers,
   ...selectionHandlers,
   ...skillHandlers,
   ...systemHandlers,

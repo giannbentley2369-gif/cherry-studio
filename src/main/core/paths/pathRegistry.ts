@@ -103,6 +103,7 @@ export function buildPathRegistry() {
       : path.join(__dirname, '../../migrations/sqlite-drizzle'),
 
     // -- D. feature.* — grouped by feature, physical location is irrelevant --
+    'feature.self_hosted_sync.database_file': path.join(appUserData, 'self-hosted-sync.sqlite'),
     'feature.external_app.native_file': path.join(
       appRootResources,
       'binaries',
