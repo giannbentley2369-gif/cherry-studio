@@ -41,6 +41,7 @@ import { type QuickAssistantEventSchemas, quickAssistantRequestSchemas } from '.
 import { type ScreenshotEventSchemas, screenshotRequestSchemas } from './screenshot'
 import { screenshotChatRequestSchemas, type ScreenshotChatEventSchemas } from './screenshotChat'
 import { type SelectionEventSchemas, selectionRequestSchemas } from './selection'
+import { type SelfHostedSyncEventSchemas, selfHostedSyncRequestSchemas } from './selfHostedSync'
 import { skillRequestSchemas } from './skill'
 import { type SystemEventSchemas, systemRequestSchemas } from './system'
 import { type TabEventSchemas, tabRequestSchemas } from './tab'
@@ -102,6 +103,7 @@ export const ipcRequestSchemas = {
   ...quickAssistantRequestSchemas,
   ...screenshotRequestSchemas,
   ...screenshotChatRequestSchemas,
+  ...selfHostedSyncRequestSchemas,
   ...selectionRequestSchemas,
   ...skillRequestSchemas,
   ...systemRequestSchemas,
@@ -141,6 +143,7 @@ export type IpcEventSchemas = AiEventSchemas &
   QuickAssistantEventSchemas &
   ScreenshotEventSchemas &
   ScreenshotChatEventSchemas &
+  SelfHostedSyncEventSchemas &
   SelectionEventSchemas &
   SystemEventSchemas &
   TabEventSchemas &

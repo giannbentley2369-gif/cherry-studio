@@ -966,6 +966,43 @@ export class TopicService {
       { deletedAt: options.deletedAt }
     )
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: Pick<
+      typeof topicTable.$inferSelect,
+      | 'name'
+      | 'isNameManuallyEdited'
+      | 'assistantId'
+      | 'activeNodeId'
+      | 'orderKey'
+      | 'lastActivityAt'
+      | 'createdAt'
+      | 'updatedAt'
+    > | null,
+    change: { deletedAt: number; updatedAt: number }
+  ): void {
+    const existing = tx.select({ id: topicTable.id }).from(topicTable).where(eq(topicTable.id, id)).get()
+    if (!row) {
+      if (existing) tx.update(topicTable).set(change).where(eq(topicTable.id, id)).run()
+      return
+    }
+
+    if (existing) {
+      tx.update(topicTable)
+        .set({ ...row, deletedAt: null })
+        .where(eq(topicTable.id, id))
+        .run()
+      return
+    }
+
+    tx.insert(topicTable)
+      .values({ id, ...row, deletedAt: null })
+      .run()
+    getDataService('MessageService').createRootMessageTx(tx, id)
+  }
 }
 
 export const topicService = new TopicService()

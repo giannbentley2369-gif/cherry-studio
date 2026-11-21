@@ -1253,6 +1253,122 @@ export class AgentService {
 
     return affectedIds
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: Pick<
+      AgentRow,
+      | 'type'
+      | 'name'
+      | 'description'
+      | 'instructions'
+      | 'model'
+      | 'planModel'
+      | 'smallModel'
+      | 'configuration'
+      | 'orderKey'
+      | 'createdAt'
+      | 'updatedAt'
+    > | null,
+    change: { deletedAt: number; updatedAt: number }
+  ): void {
+    const existing = tx.select({ id: agentsTable.id }).from(agentsTable).where(eq(agentsTable.id, id)).get()
+    if (!row) {
+      if (existing) tx.update(agentsTable).set(change).where(eq(agentsTable.id, id)).run()
+      return
+    }
+
+    if (existing) {
+      const current = tx
+        .select({ configuration: agentsTable.configuration })
+        .from(agentsTable)
+        .where(eq(agentsTable.id, id))
+        .get()!
+      const configuration = { ...current.configuration }
+      delete configuration.reasoning_effort
+      delete configuration.service_tier
+      delete configuration.language
+      Object.assign(configuration, row.configuration)
+      tx.update(agentsTable)
+        .set({ ...row, configuration, deletedAt: null })
+        .where(eq(agentsTable.id, id))
+        .run()
+      return
+    }
+
+    tx.insert(agentsTable)
+      .values({ id, ...row, disabledTools: [], deletedAt: null })
+      .run()
+  }
+
+  applySelfHostedSyncMcpBindingTx(
+    tx: DbOrTx,
+    agentId: string,
+    mcpServerId: string,
+    row: typeof agentMcpServerTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(agentMcpServerTable)
+        .where(and(eq(agentMcpServerTable.agentId, agentId), eq(agentMcpServerTable.mcpServerId, mcpServerId)))
+        .run()
+      return
+    }
+    const values = { ...row, agentId, mcpServerId, updatedAt: change.updatedAt }
+    tx.insert(agentMcpServerTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [agentMcpServerTable.agentId, agentMcpServerTable.mcpServerId],
+        set: { ...values, createdAt: agentMcpServerTable.createdAt }
+      })
+      .run()
+  }
+
+  applySelfHostedSyncKnowledgeBindingTx(
+    tx: DbOrTx,
+    agentId: string,
+    knowledgeBaseId: string,
+    row: typeof agentKnowledgeBaseTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(agentKnowledgeBaseTable)
+        .where(
+          and(
+            eq(agentKnowledgeBaseTable.agentId, agentId),
+            eq(agentKnowledgeBaseTable.knowledgeBaseId, knowledgeBaseId)
+          )
+        )
+        .run()
+      return
+    }
+    const values = { ...row, agentId, knowledgeBaseId, updatedAt: change.updatedAt }
+    tx.insert(agentKnowledgeBaseTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [agentKnowledgeBaseTable.agentId, agentKnowledgeBaseTable.knowledgeBaseId],
+        set: { ...values, createdAt: agentKnowledgeBaseTable.createdAt }
+      })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof agentAvatarFileRefTable.$inferSelect, 'sourceId'>,
+    row: typeof agentAvatarFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(agentAvatarFileRefTable).where(eq(agentAvatarFileRefTable.sourceId, key.sourceId)).run()
+      return
+    }
+    tx.insert(agentAvatarFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({ target: agentAvatarFileRefTable.sourceId, set: row })
+      .run()
+  }
 }
 
 export const agentService = new AgentService()

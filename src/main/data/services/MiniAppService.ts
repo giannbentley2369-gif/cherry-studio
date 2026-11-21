@@ -23,6 +23,7 @@ import {
   miniAppTable
 } from '@data/db/schemas/miniApp'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
+import type { DbOrTx } from '@data/db/types'
 import { loggerService } from '@logger'
 import { getAppLanguage } from '@main/i18n'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
@@ -482,6 +483,40 @@ export class MiniAppService {
       defaultHandlersFor('MiniApp', 'multiple')
     )
     logger.info('Reordered miniApps', { count: moves.length })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    appId: string,
+    row: InsertMiniAppRow | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(miniAppTable).where(eq(miniAppTable.appId, appId)).run()
+      return
+    }
+    const values = { ...row, appId, updatedAt: change.updatedAt }
+    tx.insert(miniAppTable)
+      .values(values)
+      .onConflictDoUpdate({ target: miniAppTable.appId, set: { ...values, createdAt: miniAppTable.createdAt } })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof miniAppLogoFileRefTable.$inferSelect, 'sourceId'>,
+    row: typeof miniAppLogoFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(miniAppLogoFileRefTable).where(eq(miniAppLogoFileRefTable.sourceId, key.sourceId)).run()
+      return
+    }
+    tx.insert(miniAppLogoFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({ target: miniAppLogoFileRefTable.sourceId, set: row })
+      .run()
   }
 }
 

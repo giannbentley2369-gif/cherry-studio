@@ -641,6 +641,20 @@ export class KnowledgeBaseService {
 
     logger.info('Deleted knowledge base', { id })
   }
+
+  // Self-hosted sync.
+  applySync(tx: DbOrTx, id: string, row: typeof knowledgeBaseTable.$inferInsert): void {
+    if (row.id !== id) throw new Error('Sync knowledge base id does not match its row')
+    const [existing] = tx.select().from(knowledgeBaseTable).where(eq(knowledgeBaseTable.id, id)).limit(1).all()
+    if (existing) {
+      tx.update(knowledgeBaseTable)
+        .set({ ...row, createdAt: existing.createdAt })
+        .where(eq(knowledgeBaseTable.id, id))
+        .run()
+      return
+    }
+    tx.insert(knowledgeBaseTable).values(row).run()
+  }
 }
 
 export const knowledgeBaseService = new KnowledgeBaseService()

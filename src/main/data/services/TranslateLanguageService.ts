@@ -9,6 +9,7 @@ import { asc, eq } from 'drizzle-orm'
 import { application } from '@application'
 import { translateLanguageTable } from '@data/db/schemas/translateLanguage'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
+import type { DbOrTx } from '@data/db/types'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { CreateTranslateLanguageDto, UpdateTranslateLanguageDto } from '@shared/data/api/schemas/translate'
@@ -136,6 +137,27 @@ export class TranslateLanguageService {
     })
 
     logger.info('Deleted translate language', { langCode })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    langCode: string,
+    row: typeof translateLanguageTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(translateLanguageTable).where(eq(translateLanguageTable.langCode, langCode)).run()
+      return
+    }
+    const values = { ...row, langCode, updatedAt: change.updatedAt }
+    tx.insert(translateLanguageTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: translateLanguageTable.langCode,
+        set: { ...values, createdAt: translateLanguageTable.createdAt }
+      })
+      .run()
   }
 }
 

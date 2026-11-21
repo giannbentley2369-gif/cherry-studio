@@ -17,7 +17,7 @@ import type { InsertUserModelRow, UserModelRow } from '@data/db/schemas/userMode
 import { userModelTable } from '@data/db/schemas/userModel'
 import { userProviderTable } from '@data/db/schemas/userProvider'
 import { defaultHandlersFor, type SqliteErrorHandlers, withSqliteErrors } from '@data/db/sqliteErrors'
-import type { DbType } from '@data/db/types'
+import type { DbOrTx, DbType } from '@data/db/types'
 import { notifyModelsDeleted, selectSessionsUsingModelsTx } from '@data/services/modelDeletionEffects'
 import { pinService } from '@data/services/PinService'
 import {
@@ -1347,6 +1347,24 @@ class ModelService {
       count: ids.length,
       providers: [...new Set([...uniqueItems.values()].map((item) => item.providerId))]
     })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: InsertUserModelRow | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(userModelTable).where(eq(userModelTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(userModelTable)
+      .values(values)
+      .onConflictDoUpdate({ target: userModelTable.id, set: { ...values, createdAt: userModelTable.createdAt } })
+      .run()
   }
 }
 

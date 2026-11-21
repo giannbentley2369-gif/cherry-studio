@@ -345,6 +345,36 @@ export class AgentGlobalSkillService {
       updatedAt: timestampToISO(row.updatedAt)
     }
   }
+
+  // Self-hosted sync.
+  findUniqueInstalledSkillIdByContentHashTx(tx: DbOrTx, contentHash: string): string | null {
+    const matches = tx
+      .select({ id: agentGlobalSkillTable.id })
+      .from(agentGlobalSkillTable)
+      .where(eq(agentGlobalSkillTable.contentHash, contentHash))
+      .limit(2)
+      .all()
+    return matches.length === 1 ? matches[0].id : null
+  }
+
+  applySyncedJoinTx(
+    tx: DbOrTx,
+    values: { agentId: string; skillId: string; isEnabled: boolean; createdAt: number; updatedAt: number }
+  ): void {
+    tx.insert(agentSkillTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [agentSkillTable.agentId, agentSkillTable.skillId],
+        set: { isEnabled: values.isEnabled, createdAt: values.createdAt, updatedAt: values.updatedAt }
+      })
+      .run()
+  }
+
+  deleteSyncedJoinTx(tx: DbOrTx, agentId: string, skillId: string): void {
+    tx.delete(agentSkillTable)
+      .where(and(eq(agentSkillTable.agentId, agentId), eq(agentSkillTable.skillId, skillId)))
+      .run()
+  }
 }
 
 export const agentGlobalSkillService = new AgentGlobalSkillService()

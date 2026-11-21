@@ -11,6 +11,7 @@ import { isEqual } from 'es-toolkit/compat'
 
 import { application } from '@application'
 import { mcpServerTable } from '@data/db/schemas/mcpServer'
+import type { DbOrTx } from '@data/db/types'
 import { agentService } from '@data/services/AgentService'
 import { loggerService } from '@logger'
 import { defaultAppHeaders, mergeHeaders } from '@main/utils/http'
@@ -273,6 +274,24 @@ export class McpServerService {
     if (!name?.trim()) {
       throw DataApiErrorFactory.validation({ name: ['Name is required'] })
     }
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof mcpServerTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(mcpServerTable).where(eq(mcpServerTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(mcpServerTable)
+      .values(values)
+      .onConflictDoUpdate({ target: mcpServerTable.id, set: { ...values, createdAt: mcpServerTable.createdAt } })
+      .run()
   }
 }
 

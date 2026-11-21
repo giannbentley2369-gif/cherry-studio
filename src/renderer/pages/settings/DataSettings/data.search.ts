@@ -1,4 +1,5 @@
 import type { SettingsSearchEntry } from '../settingsSearch/types'
+import { selfHostedSyncSearchEntries } from './SelfHostedSyncSettings/searchEntries'
 
 // Data settings switches its panels via component state, not sub-routes, so
 // each entry carries the owning panel key — jumps navigate as /settings/data?panel=<key>
@@ -121,6 +122,7 @@ export const entries: SettingsSearchEntry[] = [
     panel: 's3',
     groupKey: 'settings.data.s3.title.label'
   },
+  ...selfHostedSyncSearchEntries,
   {
     anchorId: 'import-chatgpt',
     titleKey: 'settings.data.import_settings.chatgpt',

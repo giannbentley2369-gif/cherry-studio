@@ -133,7 +133,12 @@ import { fileRefService } from '@data/services/FileRefService'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, type Disposable, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { logFailure } from '@main/core/logger/logFailure'
-import { stat as fsStat } from '@main/utils/file'
+import {
+  createPreparedAtomicWriteStream,
+  openReadableFileSnapshot,
+  type PreparedAtomicWrite,
+  stat as fsStat
+} from '@main/utils/file'
 import type { ContentHash, DanglingState, FileEntry, FileEntryId } from '@shared/data/types/file'
 import { CleanupPolicySchema, FileEntryIdSchema } from '@shared/data/types/file'
 import { fileErrorCodes } from '@shared/ipc/errors/file'
@@ -149,7 +154,7 @@ import type {
   FileUrlString,
   PhysicalFileMetadata
 } from '@shared/types/file'
-import { AbsoluteFilePathSchema } from '@shared/types/file'
+import { AbsoluteFilePathSchema, SafeExtSchema } from '@shared/types/file'
 import { KeyedMutex } from '@shared/utils/async'
 import { canonicalizeFilePath } from '@shared/utils/file'
 
@@ -1399,6 +1404,26 @@ export class FileManager extends BaseService implements IFileManager {
       })
     )
     return Object.fromEntries(pairs)
+  }
+
+  // Self-hosted sync: use the same file identity, write lock and cache as foreground edits.
+  syncInternalFile(id: FileEntryId, ext: string | null) {
+    const target = resolvePhysicalPath({
+      origin: 'internal',
+      id: FileEntryIdSchema.parse(id),
+      ext: SafeExtSchema.nullable().parse(ext)
+    })
+    return {
+      target,
+      snapshot: () => openReadableFileSnapshot(target),
+      stage: (ready: (file: PreparedAtomicWrite) => Promise<void>) =>
+        createPreparedAtomicWriteStream(target, ready, { mode: 0o600 }),
+      lock: () => this._contentWriteLock.acquire(id),
+      changed: () => {
+        this._versionCache.invalidate(id)
+        this.notifyReadModelChange([id])
+      }
+    }
   }
 }
 

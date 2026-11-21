@@ -865,6 +865,99 @@ export class AssistantDataService {
       throw DataApiErrorFactory.validation({ name: ['Name is required'] })
     }
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof assistantTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.update(assistantTable)
+        .set({ deletedAt: change.deletedAt ?? change.updatedAt, updatedAt: change.updatedAt })
+        .where(eq(assistantTable.id, id))
+        .run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt, deletedAt: null }
+    tx.insert(assistantTable)
+      .values(values)
+      .onConflictDoUpdate({ target: assistantTable.id, set: { ...values, createdAt: assistantTable.createdAt } })
+      .run()
+  }
+
+  applySelfHostedSyncMcpBindingTx(
+    tx: DbOrTx,
+    assistantId: string,
+    mcpServerId: string,
+    row: typeof assistantMcpServerTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(assistantMcpServerTable)
+        .where(
+          and(
+            eq(assistantMcpServerTable.assistantId, assistantId),
+            eq(assistantMcpServerTable.mcpServerId, mcpServerId)
+          )
+        )
+        .run()
+      return
+    }
+    const values = { ...row, assistantId, mcpServerId, updatedAt: change.updatedAt }
+    tx.insert(assistantMcpServerTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [assistantMcpServerTable.assistantId, assistantMcpServerTable.mcpServerId],
+        set: { ...values, createdAt: assistantMcpServerTable.createdAt }
+      })
+      .run()
+  }
+
+  applySelfHostedSyncKnowledgeBindingTx(
+    tx: DbOrTx,
+    assistantId: string,
+    knowledgeBaseId: string,
+    row: typeof assistantKnowledgeBaseTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(assistantKnowledgeBaseTable)
+        .where(
+          and(
+            eq(assistantKnowledgeBaseTable.assistantId, assistantId),
+            eq(assistantKnowledgeBaseTable.knowledgeBaseId, knowledgeBaseId)
+          )
+        )
+        .run()
+      return
+    }
+    const values = { ...row, assistantId, knowledgeBaseId, updatedAt: change.updatedAt }
+    tx.insert(assistantKnowledgeBaseTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [assistantKnowledgeBaseTable.assistantId, assistantKnowledgeBaseTable.knowledgeBaseId],
+        set: { ...values, createdAt: assistantKnowledgeBaseTable.createdAt }
+      })
+      .run()
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof assistantAvatarFileRefTable.$inferSelect, 'sourceId'>,
+    row: typeof assistantAvatarFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(assistantAvatarFileRefTable).where(eq(assistantAvatarFileRefTable.sourceId, key.sourceId)).run()
+      return
+    }
+    tx.insert(assistantAvatarFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({ target: assistantAvatarFileRefTable.sourceId, set: row })
+      .run()
+  }
 }
 
 export const assistantDataService = new AssistantDataService()

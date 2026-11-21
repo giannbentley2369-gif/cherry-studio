@@ -1,0 +1,27 @@
+[Unit]
+Description=Cherry Studio self-hosted sync server
+After=network.target
+
+[Service]
+Type=simple
+User=cherry-sync
+Group=cherry-sync
+WorkingDirectory=/opt/cherry-sync
+Environment=NODE_ENV=production
+Environment=SYNC_BIND=127.0.0.1
+Environment=SYNC_PORT=8787
+Environment=SYNC_DATA_DIR=/var/lib/cherry-sync
+EnvironmentFile=-/etc/cherry-sync/server.env
+ExecStart=/opt/cherry-sync-node/bin/node /opt/cherry-sync/dist/server.js
+Restart=on-failure
+RestartSec=3
+UMask=0077
+StateDirectory=cherry-sync
+StateDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

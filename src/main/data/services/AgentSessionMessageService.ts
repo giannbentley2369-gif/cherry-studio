@@ -2871,6 +2871,98 @@ export class AgentSessionMessageService {
     ])
     return true
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: Pick<
+      SessionMessageRow,
+      | 'sessionId'
+      | 'role'
+      | 'parentId'
+      | 'data'
+      | 'status'
+      | 'modelId'
+      | 'messageSnapshot'
+      | 'stats'
+      | 'createdAt'
+      | 'updatedAt'
+    > | null
+  ): void {
+    const existing = tx.select().from(sessionMessagesTable).where(eq(sessionMessagesTable.id, id)).get()
+    if (!row) {
+      if (existing) tx.delete(sessionMessagesTable).where(eq(sessionMessagesTable.id, id)).run()
+      return
+    }
+
+    if (!existing && row.role === 'root') {
+      const currentRoot = tx
+        .select({ id: sessionMessagesTable.id })
+        .from(sessionMessagesTable)
+        .where(and(eq(sessionMessagesTable.sessionId, row.sessionId), eq(sessionMessagesTable.role, 'root')))
+        .get()
+      if (currentRoot && currentRoot.id !== id) {
+        tx.update(sessionTable)
+          .set({ activeNodeId: id })
+          .where(and(eq(sessionTable.id, row.sessionId), eq(sessionTable.activeNodeId, currentRoot.id)))
+          .run()
+        tx.delete(sessionMessagesTable).where(eq(sessionMessagesTable.id, currentRoot.id)).run()
+      }
+    }
+
+    if (existing) {
+      const data = {
+        ...row.data,
+        ...(existing.data.runtimeAnchor !== undefined ? { runtimeAnchor: existing.data.runtimeAnchor } : {}),
+        ...(existing.data.nativeSessionId !== undefined ? { nativeSessionId: existing.data.nativeSessionId } : {}),
+        ...(existing.data.deliveryReplyAnchor !== undefined
+          ? { deliveryReplyAnchor: existing.data.deliveryReplyAnchor }
+          : {}),
+        ...(existing.data.locallyHandled !== undefined ? { locallyHandled: existing.data.locallyHandled } : {})
+      }
+      tx.update(sessionMessagesTable)
+        .set({ ...row, data })
+        .where(eq(sessionMessagesTable.id, id))
+        .run()
+    } else {
+      tx.insert(sessionMessagesTable)
+        .values({ id, ...row })
+        .run()
+    }
+    replaceAgentSessionMessageFileRefsTx(tx, id, row.data)
+  }
+
+  // Self-hosted sync: reconcile the owner's attachment by its unique slot.
+  applySyncedAttachmentTx(
+    tx: DbOrTx,
+    key: Pick<typeof agentSessionMessageFileRefTable.$inferSelect, 'fileEntryId' | 'sourceId' | 'role'>,
+    row: typeof agentSessionMessageFileRefTable.$inferInsert | null
+  ): void {
+    if (!row) {
+      tx.delete(agentSessionMessageFileRefTable)
+        .where(
+          and(
+            eq(agentSessionMessageFileRefTable.fileEntryId, key.fileEntryId),
+            eq(agentSessionMessageFileRefTable.sourceId, key.sourceId),
+            eq(agentSessionMessageFileRefTable.role, key.role)
+          )
+        )
+        .run()
+      return
+    }
+    tx.insert(agentSessionMessageFileRefTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [
+          agentSessionMessageFileRefTable.fileEntryId,
+          agentSessionMessageFileRefTable.sourceId,
+          agentSessionMessageFileRefTable.role
+        ],
+        set: row
+      })
+      .run()
+  }
 }
 
 export const agentSessionMessageService = new AgentSessionMessageService()

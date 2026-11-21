@@ -15,7 +15,7 @@ import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { agentTable } from '@data/db/schemas/agent'
 import { assistantTable } from '@data/db/schemas/assistant'
 import { promptBindingTable, promptTable } from '@data/db/schemas/prompt'
-import type { DbType } from '@data/db/types'
+import type { DbOrTx, DbType } from '@data/db/types'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
@@ -520,6 +520,58 @@ export class PromptService {
       { endpoint: '/prompt-bindings/:targetType/:targetId', kind: 'membership', entityIds: [id] },
       { endpoint: '/prompts/:id/bindings', kind: 'membership' }
     ])
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof promptTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(promptTable).where(eq(promptTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(promptTable)
+      .values(values)
+      .onConflictDoUpdate({ target: promptTable.id, set: { ...values, createdAt: promptTable.createdAt } })
+      .run()
+  }
+
+  applySelfHostedSyncBindingTx(
+    tx: DbOrTx,
+    key: { promptId: string; targetType: 'assistant' | 'agent'; targetId: string },
+    row: typeof promptBindingTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(promptBindingTable)
+        .where(
+          and(
+            eq(promptBindingTable.promptId, key.promptId),
+            eq(promptBindingTable.targetType, key.targetType),
+            eq(promptBindingTable.targetId, key.targetId)
+          )
+        )
+        .run()
+      return
+    }
+    const values = {
+      ...row,
+      promptId: key.promptId,
+      targetType: key.targetType,
+      targetId: key.targetId,
+      updatedAt: change.updatedAt
+    }
+    tx.insert(promptBindingTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [promptBindingTable.promptId, promptBindingTable.targetType, promptBindingTable.targetId],
+        set: { ...values, createdAt: promptBindingTable.createdAt }
+      })
+      .run()
   }
 }
 

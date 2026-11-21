@@ -27,7 +27,7 @@ import { application } from '@application'
 import { notifyDataApiDataChange } from '@data/dataApiDataChange'
 import { type PinRow, pinTable } from '@data/db/schemas/pin'
 import { classifySqliteError } from '@data/db/sqliteErrors'
-import type { DbType } from '@data/db/types'
+import type { DbOrTx, DbType } from '@data/db/types'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
@@ -256,6 +256,24 @@ export class PinService {
     }
 
     logger.info('Purged pins for entities', { entityType, count: entityIds.length })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof pinTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(pinTable).where(eq(pinTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(pinTable)
+      .values(values)
+      .onConflictDoUpdate({ target: pinTable.id, set: { ...values, createdAt: pinTable.createdAt } })
+      .run()
   }
 }
 

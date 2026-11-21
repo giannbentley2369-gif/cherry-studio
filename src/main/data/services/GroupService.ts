@@ -214,6 +214,24 @@ export class GroupService {
       })
     )
   }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof groupTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(groupTable).where(eq(groupTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(groupTable)
+      .values(values)
+      .onConflictDoUpdate({ target: groupTable.id, set: { ...values, createdAt: groupTable.createdAt } })
+      .run()
+  }
 }
 
 export const groupService = new GroupService()

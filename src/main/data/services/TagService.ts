@@ -32,7 +32,7 @@ import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm'
 import { application } from '@application'
 import { entityTagTable, type TagRow, tagTable } from '@data/db/schemas/tagging'
 import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
-import type { DbType } from '@data/db/types'
+import type { DbOrTx, DbType } from '@data/db/types'
 import { loggerService } from '@logger'
 import { DataApiErrorFactory } from '@shared/data/api/errors'
 import type { CreateTagDto, SetTagEntitiesDto, SyncEntityTagsDto, UpdateTagDto } from '@shared/data/api/schemas/tags'
@@ -475,6 +475,58 @@ export class TagService {
       .run()
 
     logger.info('Purged tags for entities', { entityType, count: entityIds.length })
+  }
+
+  // Self-hosted sync.
+  applySelfHostedSyncTagTx(
+    tx: DbOrTx,
+    id: string,
+    row: typeof tagTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(tagTable).where(eq(tagTable.id, id)).run()
+      return
+    }
+    const values = { ...row, id, updatedAt: change.updatedAt }
+    tx.insert(tagTable)
+      .values(values)
+      .onConflictDoUpdate({ target: tagTable.id, set: { ...values, createdAt: tagTable.createdAt } })
+      .run()
+  }
+
+  applySelfHostedSyncEntityTagTx(
+    tx: DbOrTx,
+    key: { entityType: string; entityId: string; tagId: string },
+    row: typeof entityTagTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(entityTagTable)
+        .where(
+          and(
+            eq(entityTagTable.entityType, key.entityType),
+            eq(entityTagTable.entityId, key.entityId),
+            eq(entityTagTable.tagId, key.tagId)
+          )
+        )
+        .run()
+      return
+    }
+    const values = {
+      ...row,
+      entityType: key.entityType,
+      entityId: key.entityId,
+      tagId: key.tagId,
+      updatedAt: change.updatedAt
+    }
+    tx.insert(entityTagTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [entityTagTable.entityType, entityTagTable.entityId, entityTagTable.tagId],
+        set: { ...values, createdAt: entityTagTable.createdAt }
+      })
+      .run()
   }
 }
 

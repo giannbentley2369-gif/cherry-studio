@@ -3,6 +3,7 @@ import { BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import { isEqual } from 'es-toolkit/compat'
 
 import { application } from '@application'
+import type { DbOrTx } from '@data/db/types'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, ServicePhase } from '@main/core/lifecycle'
 import { Phase } from '@main/core/lifecycle'
@@ -874,5 +875,39 @@ export class PreferenceService extends BaseService {
    */
   public getSubscriptions(): Map<number, Set<string>> {
     return new Map(this.windowSubscriptions)
+  }
+
+  // Self-hosted sync.
+  public applySyncedValues(updates: readonly { key: PreferenceKeyType; value: unknown }[]): void {
+    const cache = this.cache as Record<string, unknown>
+    for (const { key, value } of updates) {
+      const oldValue = cache[key] ?? DefaultPreferences.default[key]
+      if (isEqual(oldValue, value)) continue
+      cache[key] = value
+      void this.notifyChange(key, value, oldValue)
+    }
+  }
+
+  public applySelfHostedSyncTx(
+    tx: DbOrTx,
+    scope: string,
+    key: string,
+    row: typeof preferenceTable.$inferInsert | null,
+    change: { updatedAt: number; deletedAt?: number }
+  ): void {
+    if (!row) {
+      tx.delete(preferenceTable)
+        .where(and(eq(preferenceTable.scope, scope), eq(preferenceTable.key, key)))
+        .run()
+      return
+    }
+    const values = { ...row, scope, key, updatedAt: change.updatedAt }
+    tx.insert(preferenceTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [preferenceTable.scope, preferenceTable.key],
+        set: { ...values, createdAt: preferenceTable.createdAt }
+      })
+      .run()
   }
 }
